@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Database Anggota Gereja</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body class="bg-gray-100">
+  <div id="login-section" class="flex items-center justify-center h-screen">
+    <div class="bg-white p-6 rounded shadow-md w-96">
+      <h2 class="text-2xl font-bold mb-4 text-center">Login Admin</h2>
+      <input id="email" type="email" placeholder="Email" class="w-full p-2 border rounded mb-2">
+      <input id="password" type="password" placeholder="Password" class="w-full p-2 border rounded mb-4">
+      <button id="login-btn" class="w-full bg-blue-500 text-white p-2 rounded">Login</button>
+      <p id="login-error" class="text-red-500 text-sm mt-2 hidden">Login gagal. Periksa email/password.</p>
+    </div>
+  </div>
+
+  <div id="app-section" class="hidden p-6">
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-3xl font-bold">Database Anggota Gereja</h1>
+      <button id="logout-btn" class="bg-red-500 text-white px-4 py-2 rounded">Logout</button>
+    </div>
+
+    <div class="bg-white p-4 rounded shadow mb-6">
+      <h2 class="text-xl font-bold mb-4">Tambah Anggota</h2>
+      <div class="grid grid-cols-2 gap-4">
+        <input id="nama" type="text" placeholder="Nama" class="p-2 border rounded">
+        <input id="alamat" type="text" placeholder="Alamat" class="p-2 border rounded">
+        <input id="tanggal" type="date" class="p-2 border rounded">
+        <input id="nohp" type="text" placeholder="Nomor HP" class="p-2 border rounded">
+      </div>
+      <button id="add-btn" class="mt-4 bg-green-500 text-white px-4 py-2 rounded">Tambah</button>
+    </div>
+
+    <div class="bg-white p-4 rounded shadow">
+      <div class="flex justify-between mb-4">
+        <input id="search" type="text" placeholder="Cari anggota..." class="p-2 border rounded w-1/2">
+        <div class="space-x-2">
+          <button id="export-excel" class="bg-blue-500 text-white px-4 py-2 rounded">Export Excel</button>
+          <button id="export-pdf" class="bg-purple-500 text-white px-4 py-2 rounded">Export PDF</button>
+        </div>
+      </div>
+      <table class="w-full border">
+        <thead>
+          <tr class="bg-gray-200">
+            <th class="p-2 border">Nama</th>
+            <th class="p-2 border">Alamat</th>
+            <th class="p-2 border">Tanggal Lahir</th>
+            <th class="p-2 border">Nomor HP</th>
+            <th class="p-2 border">Aksi</th>
+          </tr>
+        </thead>
+        <tbody id="anggota-list"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+    import { getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+    // Firebase Config
+    const firebaseConfig = {
+      apiKey: "AIzaSyCZkuG6NXP6Ffo5YVPt-SO4djykcGfgj9I",
+      authDomain: "database-gpdi-lpakam.firebaseapp.com",
+      projectId: "database-gpdi-lpakam",
+      storageBucket: "database-gpdi-lpakam.firebasestorage.app",
+      messagingSenderId: "746451970408",
+      appId: "1:746451970408:web:f5a68d491bfc4d44258edd",
+      measurementId: "G-Q7WD05L53S"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    const loginSection = document.getElementById("login-section");
+    const appSection = document.getElementById("app-section");
+    const loginBtn = document.getElementById("login-btn");
+    const logoutBtn = document.getElementById("logout-btn");
+    const loginError = document.getElementById("login-error");
+
+    loginBtn.addEventListener("click", async () => {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+        loginSection.classList.add("hidden");
+        appSection.classList.remove("hidden");
+        loadAnggota();
+      } catch (err) {
+        loginError.classList.remove("hidden");
+      }
+    });
+
+    logoutBtn.addEventListener("click", async () => {
+      await signOut(auth);
+      loginSection.classList.remove("hidden");
+      appSection.classList.add("hidden");
+    });
+
+    // CRUD Anggota
+    const anggotaList = document.getElementById("anggota-list");
+    const addBtn = document.getElementById("add-btn");
+
+    async function loadAnggota() {
+      anggotaList.innerHTML = "";
+      const querySnapshot = await getDocs(collection(db, "anggota"));
+      querySnapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td class='p-2 border'>${data.nama}</td>
+          <td class='p-2 border'>${data.alamat}</td>
+          <td class='p-2 border'>${data.tanggal}</td>
+          <td class='p-2 border'>${data.nohp}</td>
+          <td class='p-2 border'>
+            <button class='bg-yellow-500 text-white px-2 py-1 rounded mr-2' onclick="editAnggota('${docSnap.id}','${data.nama}','${data.alamat}','${data.tanggal}','${data.nohp}')">Edit</button>
+            <button class='bg-red-500 text-white px-2 py-1 rounded' onclick="deleteAnggota('${docSnap.id}')">Hapus</button>
+          </td>`;
+        anggotaList.appendChild(row);
+      });
+    }
+
+    addBtn.addEventListener("click", async () => {
+      const nama = document.getElementById("nama").value;
+      const alamat = document.getElementById("alamat").value;
+      const tanggal = document.getElementById("tanggal").value;
+      const nohp = document.getElementById("nohp").value;
+      if (!nama || !alamat || !tanggal || !nohp) return alert("Lengkapi semua data!");
+      await addDoc(collection(db, "anggota"), { nama, alamat, tanggal, nohp });
+      loadAnggota();
+    });
+
+    window.deleteAnggota = async (id) => {
+      await deleteDoc(doc(db, "anggota", id));
+      loadAnggota();
+    };
+
+    window.editAnggota = async (id, nama, alamat, tanggal, nohp) => {
+      document.getElementById("nama").value = nama;
+      document.getElementById("alamat").value = alamat;
+      document.getElementById("tanggal").value = tanggal;
+      document.getElementById("nohp").value = nohp;
+      await deleteDoc(doc(db, "anggota", id));
+    };
+
+    // Export
+    document.getElementById("export-excel").addEventListener("click", async () => {
+      const querySnapshot = await getDocs(collection(db, "anggota"));
+      const data = [];
+      querySnapshot.forEach((docSnap) => data.push(docSnap.data()));
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Anggota");
+      XLSX.writeFile(wb, "anggota.xlsx");
+    });
+
+    document.getElementById("export-pdf").addEventListener("click", async () => {
+      const { jsPDF } = window.jspdf;
+      const docPDF = new jsPDF();
+      const querySnapshot = await getDocs(collection(db, "anggota"));
+      let y = 10;
+      querySnapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        docPDF.text(`Nama: ${data.nama}, Alamat: ${data.alamat}, TTL: ${data.tanggal}, HP: ${data.nohp}`, 10, y);
+        y += 10;
+      });
+      docPDF.save("anggota.pdf");
+    });
+  </script>
+</body>
+</html>
